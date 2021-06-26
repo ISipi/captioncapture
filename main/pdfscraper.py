@@ -5,6 +5,7 @@ import argparse
 import requests
 import os
 import time
+import random
 
 
 def scrape_a_scholar(query, lan, output_folder, num_pages):
@@ -33,9 +34,13 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
         soup = BeautifulSoup(response.content,'lxml')
 
         for span in soup.find_all('span', {'class': 'gs_ctg2'}):
+            nap = random.randint(0, 5)
+            time.sleep(nap)
             # if [PDF] text is given for a link, check the link's headers
             if span.text == "[PDF]":
                 pdf_link = span.parent.get('href')
+                #if "academia.edu" in span.parent.text:
+
                 r = requests.get(pdf_link, stream=True)
                 # if the header Content-Type is 'application/pdf, we know it can be downloaded.
                 downloadable = 'application/pdf' in r.headers.get('Content-Type', '')
@@ -51,9 +56,11 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
                         pdf.write(r.content)
 
                 else:
-                    #r = requests.get(pdf_link, allow_redirects=True)
-                    #new_soup = BeautifulSoup(r.content, 'lxml')
-                    #print(new_soup.prettify())
+                    """
+                    r = requests.get(pdf_link, allow_redirects=True)
+                    new_soup = BeautifulSoup(r.content, 'lxml')
+
+                    print(new_soup.prettify())"""
                     failed_downloads += 1
         time.sleep(5)
 
@@ -68,6 +75,11 @@ if __name__ == "__main__":
     parser.add_argument("--output_folder", type=str, default="../downloaded_pdfs/",
                         help="Full path to the output folder. Default is current directory.")
     parser.add_argument("--num_pages", type=int, default=1, help="How many pages to search through?")
+
+    """ TODO: 
+        let user to decide whether to save the PDFs
+    """
+
     args = parser.parse_args()
     query, lan, output_folder, num_pages = args.query, args.lan, args.output_folder, args.num_pages
 
