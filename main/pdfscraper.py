@@ -41,6 +41,7 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
                 downloadable = 'application/pdf' in r.headers.get('Content-Type', '')
                 print(downloadable)
                 if downloadable:
+                    """
                     # use requests to download a file
                     r = requests.get(pdf_link, allow_redirects=True)
                     success += 1
@@ -48,8 +49,11 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
 
                     with open(f'{output_folder}/downloaded_pdf_{num_items_in_folder}.pdf', 'wb') as pdf:
                         pdf.write(r.content)
-                    
+                    """
                 else:
+                    r = requests.get(pdf_link, allow_redirects=True)
+                    new_soup = BeautifulSoup(r.content, 'lxml')
+                    print(new_soup.prettify())
                     failed_downloads += 1
         time.sleep(5)
 
@@ -61,9 +65,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--query", type=str, default='zooarchaeology', help="Use a keyword to search for a topic")
     parser.add_argument("--lan", type=str, default='en', help="Choose a language, default 'en'")
-    parser.add_argument("--output_folder", type=str, default="../downloaded_pdfs/", help="Full path to the output folder. Default is "
-                                                                        "current directory.")
-    parser.add_argument("--num_pages", type=int, default=5, help="How many pages to search through?")
+    parser.add_argument("--output_folder", type=str, default="../downloaded_pdfs/",
+                        help="Full path to the output folder. Default is current directory.")
+    parser.add_argument("--num_pages", type=int, default=1, help="How many pages to search through?")
     args = parser.parse_args()
     query, lan, output_folder, num_pages = args.query, args.lan, args.output_folder, args.num_pages
 
