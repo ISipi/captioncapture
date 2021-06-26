@@ -4,30 +4,59 @@ from bs4 import BeautifulSoup
 import argparse
 import requests
 import os
-import time
 import concurrent.futures
+import fitz
+import PIL
+import time
+from headers_and_proxies import pick_a_header, get_proxies
 
 MAX_THREADS = 10
 
 
-def run_img_extraction(local_folder):
+def extractor(name, img_output_folder, xRes=4800, yRes=4800):
+    basename = os.path.basename(name)
+    basename = basename[:-4]
+    doc =fitz.open(name)
+    for page in range(doc.page_count):
+        for image in doc.getPageImageList(page):
+            # xref = figure reference
+            xref = image[0]
+            pix = fitz.Pixmap(doc, xref)
+
+            if pix.height > 5 and pix.width > 5:
+                pix.set_dpi(xRes, yRes)
+                try:
+                    #print(pix.colorspace, pix.irect)
+                    if pix.n < 5:
+                        pix.writePNG(f"{img_output_folder}/{basename}page_{page}-{xref}.png")
+                    else:
+                        pix1 = fitz.Pixmap(fitz.csRGB, pix)
+                        pix1.writePNG(f"{img_output_folder}/{basename}page_{page}-{xref}.png")
+                except ValueError:
+                    print("Unsupported colorspace, moving on")
+
+    """
+        TODO:
+        1) add caption capture
+            - maybe we should only extract an image if we can definitely associate a caption?
+        2) check colorspace?
+    
+    """
+
+
+def run_img_extraction(local_folder, img_output_folder):
     """
     Go to the local_folder and open PDFs
     :param local_folder:
     :return:
     """
 
-    for i in os.listdir(local_folder):
-        if '.pdf' == i[-4:]:
-            pdf_file = os.path.join(local_folder, i)
-
-            """
-            
-            Do something to the pdf file:
-            
-            """
-
-    pass
+    args = ((os.path.join(local_folder, file), img_output_folder) for file in os.listdir(local_folder) if file.endswith(".pdf"))
+    print(args)
+    # use threading to download files simultaneously
+    threads = min(50, len(os.listdir(local_folder)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        executor.map(lambda p: extractor(*p), args)
 
 
 def downloaded(pdf_link):
@@ -40,10 +69,16 @@ def downloaded(pdf_link):
 
 
 def scrape_a_scholar(query, lan, output_folder, num_pages):
-    # sanity check - make sure that output folder exists, and if not, create it:
-    if os.path.exists(output_folder) is False:
-        os.makedirs(output_folder)
 
+    # check if query is alphanumeric and doesn't contain special characters - if so, throw images from PDFs in a folder
+    # based on the query. Else, just use a generic 'extracted_images' folder name
+    if query.isalnum():
+        img_output_folder = os.path.join(output_folder, str(query))
+    else:
+        img_output_folder = os.path.join(output_folder, 'extracted_images')
+    # sanity check - make sure that output folder exists, and if not, create it:
+    if os.path.exists(img_output_folder) is False:
+        os.makedirs(img_output_folder)
     failed_downloads = 0
     success = 0
 
@@ -56,7 +91,17 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
             payload = {'q': str(query), 'hl': str(lan)}
         else:
             payload = {'q': str(query), 'hl': str(lan), 'start': str(i*10)}
-        response = requests.get(url, params=payload)
+        headers = pick_a_header()
+        proxy_works = False
+        while proxy_works is False:
+            try:
+                proxies = get_proxies()
+                requests.get(url, proxies={'http': proxies})
+                proxy_works = True
+            except IOError:
+                print("Connection error! (Check proxy)")
+
+        response = requests.get(url, params=payload, headers=headers, proxies={'http': proxies, 'https': proxies})
         soup = BeautifulSoup(response.content, 'lxml')
         downloadable_pdfs = []
         for span in soup.find_all('span', {'class': 'gs_ctg2'}):
@@ -86,29 +131,45 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
 
     print(f"Number of failed downloads: {failed_downloads}. Successes: {success}")
 
+    for file in os.listdir(output_folder):
+        if file.endswith(".pdf"):
+            pdf_file = os.path.join(output_folder, file)
+            extractor(pdf_file, img_output_folder)
+
 
 if __name__ == "__main__":
+
+    start = time.perf_counter()
     # parse arguments:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--query", type=str, default='ancient DNA', help="Use a keyword to search for a topic")
+    parser.add_argument("--query", type=str, default='ancient dna', help="Use a keyword to search for a topic")
     parser.add_argument("--lan", type=str, default='en', help="Choose a language, default 'en'")
     parser.add_argument("--output_folder", type=str, default="../downloaded_pdfs/",
                         help="Full path to the output folder. Default is current directory.")
-    parser.add_argument("--num_pages", type=int, default=50, help="How many pages to search through?")
-    parser.add_argument("--local_folder", type=str, default='',
+    parser.add_argument("--num_pages", type=int, default=2, help="How many pages to search through?")
+    parser.add_argument("--local_folder", type=str, default=r'',
                         help="Only provide an argument if you want to perform image and caption extraction on PDFs "
                              "locally. Full path required.")
+    parser.add_argument("--img_output_folder", type=str, default="../image_output/",
+                        help="Full path to the output folder. Default is current directory.")
 
     """ TODO: 
         let user to decide whether to save the PDFs
     """
 
     args = parser.parse_args()
-    query, lan, output_folder, num_pages, local_folder = args.query, args.lan, args.output_folder, args.num_pages, \
-                                                         args.local_folder
+    query, lan, output_folder, num_pages, local_folder, img_output_folder = args.query, args.lan, args.output_folder, args.num_pages, \
+                                                         args.local_folder, args.img_output_folder
 
     if local_folder:
-        run_img_extraction(local_folder)
+        local_folder = os.path.abspath(os.path.join(os.path.curdir, local_folder))
+
+        if os.path.exists(img_output_folder) is False:
+            os.makedirs(img_output_folder)
+
+        run_img_extraction(local_folder, img_output_folder)
     else:
         # scrape PDFs:
         scrape_a_scholar(query, lan, output_folder, num_pages)
+    end = time.perf_counter()
+
