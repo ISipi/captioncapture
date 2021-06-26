@@ -57,7 +57,7 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
         else:
             payload = {'q': str(query), 'hl': str(lan), 'start': str(i*10)}
         response = requests.get(url, params=payload)
-        soup = BeautifulSoup(response.content,'lxml')
+        soup = BeautifulSoup(response.content, 'lxml')
         downloadable_pdfs = []
         for span in soup.find_all('span', {'class': 'gs_ctg2'}):
 
@@ -77,10 +77,11 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
                 else:
                     failed_downloads += 1
 
-        # use threading to download files simultaneously
-        threads = min(MAX_THREADS, len(downloadable_pdfs))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            executor.map(downloaded, downloadable_pdfs)
+        if len(downloadable_pdfs) > 1:
+            # use threading to download files simultaneously
+            threads = min(MAX_THREADS, len(downloadable_pdfs))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+                executor.map(downloaded, downloadable_pdfs)
         time.sleep(5)
 
     print(f"Number of failed downloads: {failed_downloads}. Successes: {success}")
@@ -89,11 +90,11 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
 if __name__ == "__main__":
     # parse arguments:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--query", type=str, default='zooarchaeology', help="Use a keyword to search for a topic")
+    parser.add_argument("--query", type=str, default='ancient DNA', help="Use a keyword to search for a topic")
     parser.add_argument("--lan", type=str, default='en', help="Choose a language, default 'en'")
     parser.add_argument("--output_folder", type=str, default="../downloaded_pdfs/",
                         help="Full path to the output folder. Default is current directory.")
-    parser.add_argument("--num_pages", type=int, default=5, help="How many pages to search through?")
+    parser.add_argument("--num_pages", type=int, default=50, help="How many pages to search through?")
     parser.add_argument("--local_folder", type=str, default='',
                         help="Only provide an argument if you want to perform image and caption extraction on PDFs "
                              "locally. Full path required.")
