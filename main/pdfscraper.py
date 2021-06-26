@@ -41,7 +41,7 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
                 downloadable = 'application/pdf' in r.headers.get('Content-Type', '')
                 print(downloadable)
                 if downloadable:
-                    """
+
                     # use requests to download a file
                     r = requests.get(pdf_link, allow_redirects=True)
                     success += 1
@@ -49,11 +49,11 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
 
                     with open(f'{output_folder}/downloaded_pdf_{num_items_in_folder}.pdf', 'wb') as pdf:
                         pdf.write(r.content)
-                    """
+
                 else:
-                    r = requests.get(pdf_link, allow_redirects=True)
-                    new_soup = BeautifulSoup(r.content, 'lxml')
-                    print(new_soup.prettify())
+                    #r = requests.get(pdf_link, allow_redirects=True)
+                    #new_soup = BeautifulSoup(r.content, 'lxml')
+                    #print(new_soup.prettify())
                     failed_downloads += 1
         time.sleep(5)
 
