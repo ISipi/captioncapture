@@ -6,35 +6,125 @@ import requests
 import os
 import concurrent.futures
 import fitz
+from pdfminer.pdfpage import PDFPage
 import PIL
 import time
 from headers_and_proxies import pick_a_header, get_proxies
+import csv
+import ssl
+
 
 MAX_THREADS = 10
 
 
-def extractor(name, img_output_folder, xRes=4800, yRes=4800):
+def output_csv(list_of_images_and_captions, img_output_folder):
+
+    csv_output_location = os.path.join(img_output_folder, 'captions_and_figures.csv')
+
+    if os.path.isfile(csv_output_location):
+        mode = 'a'
+    else:
+        mode = 'w'
+
+    with open(f'{csv_output_location}', mode=mode) as csv_file:
+        fieldnames = ['figure', 'page_no', 'caption']
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        if mode == 'w':
+            writer.writeheader()
+        for entry in list_of_images_and_captions:
+            writer.writerow(entry)
+
+
+def searchable_pages(fname):
+    searchable_pages = []
+    non_searchable_pages = []
+    page_num = 0
+    with open(fname, 'rb') as infile:
+
+        for page in PDFPage.get_pages(infile):
+            page_num += 1
+            if 'Font' in page.resources.keys():
+                searchable_pages.append(page_num)
+            else:
+                non_searchable_pages.append(page_num)
+    print(len(searchable_pages), len(non_searchable_pages))
+    return len(non_searchable_pages)/(len(searchable_pages)+len(non_searchable_pages))
+
+
+def text_percentage(doc):
+    total_page_area = 0.0
+    total_text_area = 0.0
+    for page_num, page in enumerate(doc):
+        total_page_area += abs(page.rect)
+        text_area = 0.0
+        for b in page.getTextBlocks():
+            r = fitz.Rect(b[:4])  # rectangle where block text appears
+            text_area += abs(r)
+        total_text_area += text_area
+    return total_text_area / total_page_area
+
+
+def extractor(name, img_output_folder, dpi=600):
+    """
+    Extract the graphs and their associated captions
+    :param name: full path to the PDF file
+    :param img_output_folder: full path to the output folder for the captured graph
+    :param dpi: DPI
+    :return:
+    """
+
     basename = os.path.basename(name)
     basename = basename[:-4]
-    doc =fitz.open(name)
-    for page in range(doc.page_count):
-        for image in doc.getPageImageList(page):
-            # xref = figure reference
-            xref = image[0]
-            pix = fitz.Pixmap(doc, xref)
+    doc = fitz.open(name)
+    doc_text_percentage = text_percentage(doc)
+    perc_of_doc_non_searchable = searchable_pages(name)
 
-            if pix.height > 5 and pix.width > 5:
-                pix.set_dpi(xRes, yRes)
-                try:
-                    #print(pix.colorspace, pix.irect)
-                    if pix.n < 5:
-                        pix.writePNG(f"{img_output_folder}/{basename}page_{page}-{xref}.png")
-                    else:
-                        pix1 = fitz.Pixmap(fitz.csRGB, pix)
-                        pix1.writePNG(f"{img_output_folder}/{basename}page_{page}-{xref}.png")
-                except ValueError:
-                    print("Unsupported colorspace, moving on")
+    # use 'Plug-in' as a proxy for telling us whether a PDF is a scan or not
+    if 'Plug-in' in doc.metadata['producer']:
+        print("No images are extracted as the PDF is a scan")
+        doc.close()
+        return
+    elif doc_text_percentage > 0.8:
+        print("No images are extracted as the PDF is a scan")
+        doc.close()
+        return
+    elif perc_of_doc_non_searchable > 0.7:
+        print("No images are extracted as most of the PDF is a scan")
+        doc.close()
+        return
+    else:
+        list_of_figures_and_captions_for_all_pages = []
+        for page_num, page in enumerate(doc):
+            for image in page.getImageList():
+                # xref = figure reference
+                xref = image[0]
+                pix = fitz.Pixmap(doc, xref)
 
+                if pix.height > 5 and pix.width > 5:
+                    pix.set_dpi(dpi, dpi)
+                    try:
+                        #print(pix.colorspace, pix.irect)
+                        output_filename = f"{img_output_folder}/{basename}_page_{page_num}-xref_{xref}.png"
+
+                        if pix.n < 5:
+                            pix.writePNG(output_filename)
+                        else:
+                            pix1 = fitz.Pixmap(fitz.csRGB, pix)
+                            pix1.writePNG(output_filename)
+
+                        """
+                        Some logic here to extract the caption for the captured image
+                        """
+                        dict_of_images_and_captions = {}
+                        caption = None
+                        dict_of_images_and_captions['figure'] = output_filename
+                        dict_of_images_and_captions['page_no'] = page_num
+                        dict_of_images_and_captions['caption'] = caption
+                        list_of_figures_and_captions_for_all_pages.append(dict_of_images_and_captions)
+                    except ValueError:
+                        print("Unsupported colorspace, moving on")
+        doc.close()
+        output_csv(list_of_figures_and_captions_for_all_pages, img_output_folder)
     """
         TODO:
         1) add caption capture
@@ -52,9 +142,8 @@ def run_img_extraction(local_folder, img_output_folder):
     """
 
     args = ((os.path.join(local_folder, file), img_output_folder) for file in os.listdir(local_folder) if file.endswith(".pdf"))
-    print(args)
     # use threading to download files simultaneously
-    threads = min(50, len(os.listdir(local_folder)))
+    threads = min(MAX_THREADS, len(os.listdir(local_folder)))
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         executor.map(lambda p: extractor(*p), args)
 
@@ -72,7 +161,7 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
 
     # check if query is alphanumeric and doesn't contain special characters - if so, throw images from PDFs in a folder
     # based on the query. Else, just use a generic 'extracted_images' folder name
-    if query.isalnum():
+    if str(query).isalnum():
         img_output_folder = os.path.join(output_folder, str(query))
     else:
         img_output_folder = os.path.join(output_folder, 'extracted_images')
@@ -81,7 +170,7 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
         os.makedirs(img_output_folder)
     failed_downloads = 0
     success = 0
-
+    ssl._create_default_https_context = ssl._create_unverified_context
     # base url:
     url = 'https://scholar.google.com/scholar?'
     # loop through pages:
@@ -91,17 +180,18 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
             payload = {'q': str(query), 'hl': str(lan)}
         else:
             payload = {'q': str(query), 'hl': str(lan), 'start': str(i*10)}
-        headers = pick_a_header()
+
         proxy_works = False
         while proxy_works is False:
             try:
+                headers = pick_a_header()
                 proxies = get_proxies()
-                requests.get(url, proxies={'http': proxies})
+                response = requests.get(url, params=payload, headers=headers, proxies={'http': proxies})
                 proxy_works = True
-            except IOError:
+            except requests.exceptions.ProxyError:
                 print("Connection error! (Check proxy)")
 
-        response = requests.get(url, params=payload, headers=headers, proxies={'http': proxies, 'https': proxies})
+        #response = requests.get(url, params=payload, headers=headers, proxies={'http': proxies, 'https': proxies})
         soup = BeautifulSoup(response.content, 'lxml')
         downloadable_pdfs = []
         for span in soup.find_all('span', {'class': 'gs_ctg2'}):
@@ -131,15 +221,12 @@ def scrape_a_scholar(query, lan, output_folder, num_pages):
 
     print(f"Number of failed downloads: {failed_downloads}. Successes: {success}")
 
-    for file in os.listdir(output_folder):
-        if file.endswith(".pdf"):
-            pdf_file = os.path.join(output_folder, file)
-            extractor(pdf_file, img_output_folder)
+    # img_extraction
+    run_img_extraction(output_folder, img_output_folder)
 
 
 if __name__ == "__main__":
 
-    start = time.perf_counter()
     # parse arguments:
     parser = argparse.ArgumentParser()
     parser.add_argument("--query", type=str, default='ancient dna', help="Use a keyword to search for a topic")
@@ -171,5 +258,5 @@ if __name__ == "__main__":
     else:
         # scrape PDFs:
         scrape_a_scholar(query, lan, output_folder, num_pages)
-    end = time.perf_counter()
+
 

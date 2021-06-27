@@ -1,3 +1,5 @@
+#!/usr/bin/env python3.7
+
 import random
 import requests
 from bs4 import BeautifulSoup
