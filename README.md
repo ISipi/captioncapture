@@ -2,14 +2,18 @@
  Download PDFs from Google Scholar, find images and their captions in the PDF
 
 # Installation notes
- Use Python 3.7, install libraries through requirements.txt.
+ Use Python 3.7, install libraries through `requirements.txt`.
 
- **Note:**
- Before installing required libraries, make sure you have `poppler` (follow instructions here https://pypi.org/project/pdf2image/) & `tesseract` installed on your machine.
-
- If using Anaconda/miniconda, you can get `poppler` with
- `conda install -c conda-forge poppler`
-
+ Required external packages:
+  - `tesseract`
+    - For Windows: https://cygwin.com/cgi-bin2/package-grep.cgi?grep=tesseract&arch=x86_64 OR for Tesseract 5.0 alpha executable: https://github.com/UB-Mannheim/tesseract/wiki
+  - `poppler`
+    - For Windows: https://github.com/oschwartz10612/poppler-windows/releases/
+    - For Mac: http://macappstore.org/poppler/
+    - For Linux: you probably have it installed, but if not, install `poppler-utils`
+    - If using Anaconda/miniconda, you can do
+      `conda install -c conda-forge poppler`
+      (preferably install before using `requirements.txt`)
 
 # Usage
  In your terminal, run the program with 'python captioncapture.py'
