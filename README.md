@@ -3,6 +3,13 @@
 
 # Installation notes
  Use Python 3.7, install libraries through requirements.txt.
+ Required external packages:
+  - Tesseract 
+    - For Windows: https://cygwin.com/cgi-bin2/package-grep.cgi?grep=tesseract&arch=x86_64 OR for Tesseract 5.0 alpha executable: https://github.com/UB-Mannheim/tesseract/wiki
+  - Poppler
+    - For Windows: https://github.com/oschwartz10612/poppler-windows/releases/
+    - For Mac: http://macappstore.org/poppler/
+    - For Linux: you probably have it installed, but if not, install poppler-utils
  
 # Usage
  In your terminal, run the program with 'python captioncapture.py'
