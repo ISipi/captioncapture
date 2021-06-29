@@ -1,5 +1,5 @@
 # CaptionCapture
- Download PDFs from Google Scholar, find images and their captions in the PDF
+ Download PDFs from Google Scholar, find images and their captions in the PDF - this is a work in progress and caption capture isn't yet fully working. Any contributions to get this to work are appreciated!
 
 # Installation notes
  Use Python 3.7, install libraries through `requirements.txt`.
